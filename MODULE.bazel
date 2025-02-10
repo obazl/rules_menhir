@@ -1,6 +1,6 @@
 module(
     name                = "obazl_menhir",
-    version             = "0.1.0",
+    version             = "2024.07.15",
     compatibility_level = 0,
     bazel_compatibility = [">=7.0.0"]
 )
@@ -18,7 +18,7 @@ opam.deps(
     # toolchain = "local",
     ocaml_version = "5.1.1",
     opam_version = "2.3.0",
-    deps = {
+    pkgs = {
         "menhir": "20240715",
         "menhirLib": "20240715",
     },
