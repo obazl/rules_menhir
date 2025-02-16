@@ -1,13 +1,15 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
-load("@rules_ocaml//providers:ocaml.bzl",
-     "OcamlProvider",
-     "OcamlNsResolverProvider")
-load("@rules_ocaml//providers:codeps.bzl", "OcamlCodepsProvider")
 
-load("@rules_ocaml//ocaml:aggregators.bzl",
-     "aggregate_deps",
+load("@rules_ocaml//build:providers.bzl",
+     "OCamlCodepsProvider",
+     # "OCamlModuleProvider",
+     "OCamlNsResolverProvider",
+     "OCamlDepsProvider")
+
+load("@rules_ocaml//lib:merge.bzl",
+     "DepsAggregator",
+     "merge_deps",
      "aggregate_codeps",
-     "new_deps_aggregator",
      "COMPILE", "LINK", "COMPILE_LINK")
 
 dsorder = "postorder"
@@ -36,11 +38,11 @@ def _menhir_impl(ctx):
         print("menhir outs: %s" % ctx.outputs.outs)
         print("menhir ns resolver: %s" % ctx.attr._ns_resolver)
 
-    nsrp = ctx.attr._ns_resolver[OcamlNsResolverProvider]
+    nsrp = ctx.attr._ns_resolver[OCamlNsResolverProvider]
 
     if hasattr(nsrp, "cmi"):
         if debug: print("has _ns_resolver")
-        nsop = ctx.attr._ns_resolver[OcamlProvider]
+        nsop = ctx.attr._ns_resolver[OCamlDepsProvider]
         if debug:
             # print("nsrp: %s" % nsrp)
             print("nsrp.cmi: %s" % nsrp.cmi)
@@ -82,7 +84,9 @@ def _menhir_impl(ctx):
 
     if ctx.attr.token:
         args.add("--external-tokens",
-                 ctx.attr.token[OcamlProvider].submodule)
+                 # arg: OCaml module name
+                 # ctx.attr.token[OCamlModuleProvider].name)
+                 ctx.attr.token[OCamlDepsProvider].modname)
 
     if ctx.attr.tokens_unused:
         args.add_all(ctx.attr.tokens_unused,
@@ -118,33 +122,36 @@ def _menhir_impl(ctx):
 
     infer_inputs = mock_outputs + nsrfiles + [mock_ml]
     for dep in ctx.attr.deps:
-        infer_inputs.extend(dep[OcamlProvider].sigs.to_list())
-        infer_inputs.extend(dep[OcamlProvider].structs.to_list())
-        infer_inputs.extend(dep[OcamlProvider].ofiles.to_list())
+        infer_inputs.extend(dep[OCamlDepsProvider].sigs.to_list())
+        infer_inputs.extend(dep[OCamlDepsProvider].structs.to_list())
+        infer_inputs.extend(dep[OCamlDepsProvider].ofiles.to_list())
 
     infer_outputs = [inferred_mli]
 
     dep_dirs = [d.dirname for d in ctx.files.deps]
     if ctx.attr.token:
-        tok = ctx.attr.token[OcamlProvider]
+        tok = ctx.attr.token[OCamlDepsProvider]
         if debug: print("TOK: %s" % tok)
         # fail()
         infer_inputs.extend(ctx.files.token)
-        infer_inputs.append(tok.cmi)
-        infer_inputs.extend(tok.structs.to_list())
-        infer_inputs.extend(tok.ofiles.to_list())
+        if hasattr(tok, "sigs"):
+            infer_inputs.extend(tok.sigs.to_list())
+        if hasattr(tok, "structs"):
+            infer_inputs.extend(tok.structs.to_list())
+        if hasattr(tok, "ofiles"):
+            infer_inputs.extend(tok.ofiles.to_list())
         dep_dirs.extend([d.dirname for d in ctx.files.token])
 
-    # if OcamlNsResolverProvider in ctx.attr._ns_resolver:
+    # if OCamlNsResolverProvider in ctx.attr._ns_resolver:
     # if hasattr(nsrp, "cmi"):
     if nsrp.cmi:
-        nsrp = ctx.attr._ns_resolver[OcamlNsResolverProvider]
+        nsrp = ctx.attr._ns_resolver[OCamlNsResolverProvider]
         dep_dirs.append(nsrp.cmi.dirname)
         infer_inputs.append(nsrp.cmi)
         infer_inputs.append(nsrp.struct)
         if nsrp.ofile:
             infer_inputs.append(nsrp.ofile)
-        args.add("-open", nsrp.module_name)
+        args.add("-open", nsrp.modname)
 
     args.add_all(dep_dirs, before_each="-I", uniquify = True)
     args.add("-i", mock_ml.path)
@@ -180,19 +187,22 @@ def _menhir_impl(ctx):
 
     dep_dirs = [d.dirname for d in ctx.files.deps]
     if ctx.attr.token:
-        tok = ctx.attr.token[OcamlProvider]
+        tok = ctx.attr.token[OCamlDepsProvider]
         if debug:
             print("TOK: %s" % tok)
         # fail()
         gen_parser_inputs.extend(ctx.files.token)
-        gen_parser_inputs.append(tok.cmi)
+        gen_parser_inputs.extend(tok.sigs.to_list())
         gen_parser_inputs.extend(tok.structs.to_list())
         gen_parser_inputs.extend(tok.ofiles.to_list())
         dep_dirs.extend([d.dirname for d in ctx.files.token])
 
     if ctx.attr.token:
         args.add("--external-tokens",
-                 ctx.attr.token[OcamlProvider].submodule)
+                 # arg: OCaml module name
+                 ctx.attr.token[OCamlDepsProvider].modname)
+                 # ctx.attr.token[OCamlModuleProvider].name)
+                 # ctx.attr.token[OCamlDepsProvider].submodule)
     if ctx.attr.tokens_unused:
         args.add_all(ctx.attr.tokens_unused,
                      before_each="--unused-token", uniquify = True)
@@ -250,11 +260,11 @@ def _menhir_impl(ctx):
 
     manifest = []
     if ctx.attr.codeps:
-        depsets = new_deps_aggregator()
+        depsets = DepsAggregator()
         for codep in ctx.attr.codeps:
             depsets = aggregate_codeps(ctx, COMPILE_LINK, codep, depsets, manifest)
         # print(depsets)
-        codepsProvider = OcamlCodepsProvider(
+        codepsProvider = OCamlCodepsProvider(
             # ppx_codeps = ppx_codeps_depset,
             sigs    = depset(order=dsorder,
                              transitive=depsets.codeps.sigs),
@@ -299,12 +309,12 @@ menhir = rule(
         ),
         deps = attr.label_list(
             doc = "List of OCaml dependencies.",
-            # providers = [[OcamlArchiveMarker],
-            #              [OcamlImportMarker],
-            #              [OcamlLibraryMarker],
-            #              [OcamlModuleMarker],
-            #              [OcamlNsResolverProvider],
-            #              [OcamlSignatureProvider]]
+            # providers = [[OCamlArchiveMarker],
+            #              [OCamlImportMarker],
+            #              [OCamlLibraryMarker],
+            #              [OCamlModuleMarker],
+            #              [OCamlNsResolverProvider],
+            #              [OCamlSignatureProvider]]
         ),
         codeps = attr.label_list(
             doc = """List co-dependencies (labels).""",
@@ -356,7 +366,7 @@ menhir = rule(
         _ns_resolver = attr.label(
             doc = "NS resolver module for top-down namespacing",
             # allow_single_file = True,
-            providers = [OcamlNsResolverProvider],
+            providers = [OCamlNsResolverProvider],
             default = "@rules_ocaml//cfg/ns:resolver",
         ),
     ),
