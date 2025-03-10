@@ -270,6 +270,8 @@ def _menhir_impl(ctx):
                              transitive=depsets.codeps.sigs),
             cli_link_deps = depset(order=dsorder,
                                    transitive = depsets.codeps.cli_link_deps),
+            link_archives_deps = depset(order=dsorder,
+                                        transitive = depsets.codeps.link_archives_deps),
             structs    = depset(order=dsorder,
                                 transitive=depsets.codeps.structs),
             ofiles    = depset(order=dsorder,
