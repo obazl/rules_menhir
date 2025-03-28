@@ -1,13 +1,15 @@
 = obazl_menhir
-Bazel module for the Menhir parser generator.
 
-See: link:https://gallium.inria.fr/~fpottier/menhir/[Menhir]
+Bazel module for the https://gallium.inria.fr/~fpottier/menhir/[Menhir,window=_blank] parser generator.
+
+WARNING: This is an early version; it does not yet support the full range of menhir capabilities.
+
 
 Usage:
 
 [source="starlark",title="MODULE.bazel"]
 ----
-bazel_dep(name = "obazl_menhir", version = "0.1.0")
+bazel_dep(name = "obazl_menhir", version = "2024.07.15")
 bazel_dep(name = "tools_opam",   version = "1.0.0")
 opam = use_extension("@tools_opam//extensions:opam.bzl", "opam")
 use_repo(opam, "opam.menhir", "opam.menhirLib")
@@ -26,3 +28,5 @@ menhir(
     outs  = ["parser.ml", "parser.mli"]
 )
 ----
+
+For examples of use, see https://github.com/obazl/demos_obazl/tree/main/rules_ocaml/parsing/menhir[demos_obazl/rules_ocaml/parsing/menhir,window=_blank].
